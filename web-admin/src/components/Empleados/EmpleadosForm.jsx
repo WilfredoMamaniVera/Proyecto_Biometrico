@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
-import { X, Camera, Fingerprint, User, Mail, Phone, Calendar, Building, Briefcase } from 'lucide-react';
+import { X, Camera, Fingerprint, User, Mail, Phone, Calendar, Building, Briefcase, Save } from 'lucide-react';
 import { toast } from 'react-toastify';
+import * as faceapi from 'face-api.js';
 
 export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit }) => {
   const defaultFormState = useMemo(() => ({
@@ -25,10 +26,30 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
   const [isEditMode, setIsEditMode] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [activeTab, setActiveTab] = useState('personal');
+  const [capturedImage, setCapturedImage] = useState(null); // Imagen capturada temporalmente
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
 
+  // **Cargar modelos de face-api.js al montar el componente**
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri('/models'), // Modelo para detección de rostros
+          faceapi.nets.faceLandmark68Net.loadFromUri('/models'), // Modelo para landmarks faciales
+          faceapi.nets.faceRecognitionNet.loadFromUri('/models'), // Modelo para reconocimiento facial
+        ]);
+        console.log('Modelos de face-api.js cargados correctamente');
+      } catch (error) {
+        console.error('Error al cargar los modelos de face-api.js:', error);
+        toast.error('No se pudieron cargar los modelos de detección facial.');
+      }
+    };
+    loadModels();
+  }, []);
+
+  // **Actualizar formulario cuando hay empleado para editar**
   useEffect(() => {
     if (employeeToEdit) {
       let formattedDate = '';
@@ -53,12 +74,14 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     setErrors({});
   }, [employeeToEdit, defaultFormState]);
 
+  // **Detener cámara al desmontar el componente**
   useEffect(() => {
     return () => {
       stopCamera();
     };
   }, []);
 
+  // **Manejar cambios en los campos del formulario**
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prevData => ({
@@ -73,6 +96,7 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     }
   };
 
+  // **Iniciar la cámara**
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -83,13 +107,15 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setIsCameraActive(true);
+        detectFaces(); // Iniciar detección de rostros
       }
     } catch (error) {
-      console.error('Error accessing camera:', error);
+      console.error('Error al acceder a la cámara:', error);
       toast.error('No se pudo acceder a la cámara. Verifique los permisos.');
     }
   };
 
+  // **Detener la cámara**
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
@@ -99,8 +125,31 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
       videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
+    setCapturedImage(null); // Limpiar imagen capturada
   };
 
+  // **Detectar rostros en tiempo real**
+  const detectFaces = async () => {
+    if (!videoRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const displaySize = { width: video.videoWidth, height: video.videoHeight };
+    faceapi.matchDimensions(canvas, displaySize);
+
+    setInterval(async () => {
+      if (!isCameraActive || capturedImage) return; // Detener si la cámara no está activa o ya hay captura
+      const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks();
+      const resizedDetections = faceapi.resizeResults(detections, displaySize);
+      const context = canvas.getContext('2d');
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      faceapi.draw.drawDetections(canvas, resizedDetections);
+      faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+    }, 100); // Detectar cada 100ms
+  };
+
+  // **Capturar imagen del rostro**
   const captureFace = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -110,15 +159,24 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     const imageData = canvas.toDataURL('image/jpeg');
-    setFormData(prevData => ({
-      ...prevData,
-      faceIdImage: imageData,
-      useFaceId: true
-    }));
-    toast.success('Imagen facial capturada con éxito');
-    stopCamera();
+    setCapturedImage(imageData);
+    toast.success('Imagen capturada. Confirme para guardar.');
   };
 
+  // **Guardar imagen facial**
+  const saveFace = () => {
+    if (!capturedImage) return;
+    setFormData(prevData => ({
+      ...prevData,
+      faceIdImage: capturedImage,
+      useFaceId: true
+    }));
+    setCapturedImage(null);
+    stopCamera();
+    toast.success('Rostro guardado con éxito');
+  };
+
+  // **Simular registro de huella dactilar**
   const simulateFingerprint = () => {
     toast.info('Simulando registro de huella dactilar...');
     setTimeout(() => {
@@ -130,26 +188,29 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     }, 1500);
   };
 
+  // **Verificar si el email ya existe**
   const checkEmailExists = async (email) => {
     try {
       const response = await axios.get(`http://localhost:5000/api/empleados/check-email/${email}`);
       return response.data.exists;
     } catch (error) {
-      console.error('Error checking email:', error);
+      console.error('Error al verificar email:', error);
       return false;
     }
   };
 
+  // **Verificar si el nombre ya existe**
   const checkNameExists = async (nombre) => {
     try {
       const response = await axios.get(`http://localhost:5000/api/empleados/check-name/${nombre}`);
       return response.data.exists;
     } catch (error) {
-      console.error('Error checking name:', error);
+      console.error('Error al verificar nombre:', error);
       return false;
     }
   };
 
+  // **Validar el formulario**
   const validateForm = async () => {
     const newErrors = {};
     if (!formData.nombre) newErrors.nombre = 'El nombre es requerido';
@@ -163,19 +224,11 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
 
     if (!isEditMode) {
       if (!formData.useFaceId && !formData.useFingerprint) {
-        if (!formData.password) {
-          newErrors.password = 'La contraseña es requerida para nuevos empleados';
-        }
-        if (!formData.confirmPassword) {
-          newErrors.confirmPassword = 'Debe confirmar la contraseña';
-        }
-        if (formData.password !== formData.confirmPassword) {
-          newErrors.confirmPassword = 'Las contraseñas no coinciden';
-        }
+        if (!formData.password) newErrors.password = 'La contraseña es requerida para nuevos empleados';
+        if (!formData.confirmPassword) newErrors.confirmPassword = 'Debe confirmar la contraseña';
+        if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Las contraseñas no coinciden';
       }
-      if (formData.useFaceId && !formData.faceIdImage) {
-        newErrors.faceId = 'Debe capturar una imagen para Face ID';
-      }
+      if (formData.useFaceId && !formData.faceIdImage) newErrors.faceId = 'Debe guardar una imagen para Face ID';
     }
 
     if (Object.keys(newErrors).length === 0) {
@@ -199,6 +252,7 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     return Object.keys(newErrors).length === 0;
   };
 
+  // **Enviar formulario**
   const handleSubmit = async (e) => {
     e.preventDefault();
     const isValid = await validateForm();
@@ -248,6 +302,7 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
 
   if (!isOpen) return null;
 
+  // **Renderizar información personal**
   const renderPersonalInfo = () => (
     <div className="space-y-4">
       <div className="flex items-center space-x-2 mb-4">
@@ -332,6 +387,7 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     </div>
   );
 
+  // **Renderizar información laboral**
   const renderJobInfo = () => (
     <div className="space-y-4">
       <div className="flex items-center space-x-2 mb-4">
@@ -403,6 +459,7 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     </div>
   );
 
+  // **Renderizar métodos de autenticación**
   const renderAuthInfo = () => (
     <div className="space-y-6">
       <div className="flex items-center space-x-2 mb-4">
@@ -430,7 +487,7 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
             <h4 className="font-medium text-sm text-gray-700 mb-1">Centro de Captura Facial</h4>
             <p className="text-xs text-gray-500">Coloque su rostro dentro del marco y asegúrese de tener buena iluminación</p>
           </div>
-          {!isCameraActive && (
+          {!isCameraActive && !capturedImage && (
             <div className="flex flex-col items-center justify-center bg-gray-100 rounded-lg h-64">
               <Camera className="w-12 h-12 text-gray-400 mb-2" />
               <p className="text-gray-600 mb-4">La cámara está inactiva</p>
@@ -445,12 +502,12 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
               </button>
             </div>
           )}
-          {isCameraActive && (
+          {isCameraActive && !capturedImage && (
             <div className="space-y-3">
               <div className="relative h-72 flex items-center justify-center bg-black">
                 <video ref={videoRef} autoPlay playsInline className="max-h-full max-w-full object-contain" />
+                <canvas ref={canvasRef} className="absolute inset-0" />
                 <div className="absolute inset-0 border-4 border-dashed border-white opacity-40 m-8 pointer-events-none"></div>
-                <canvas ref={canvasRef} className="hidden" />
               </div>
               <div className="grid grid-cols-2 gap-3 p-3">
                 <button
@@ -461,6 +518,42 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
                 >
                   <Camera className="w-5 h-5" />
                   Capturar
+                </button>
+                <button
+                  type="button"
+                  onClick={stopCamera}
+                  className="py-2 px-4 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                  disabled={isSubmitting}
+                >
+                  <X className="w-5 h-5" />
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+          {capturedImage && (
+            <div className="space-y-3">
+              <div className="relative h-72 flex items-center justify-center bg-black">
+                <img src={capturedImage} alt="Captured Face" className="max-h-full max-w-full object-contain" />
+              </div>
+              <div className="grid grid-cols-3 gap-3 p-3">
+                <button
+                  type="button"
+                  onClick={saveFace}
+                  className="py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  disabled={isSubmitting}
+                >
+                  <Save className="w-5 h-5" />
+                  Guardar Rostro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCapturedImage(null)}
+                  className="py-2 px-4 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors flex items-center justify-center gap-2"
+                  disabled={isSubmitting}
+                >
+                  <Camera className="w-5 h-5" />
+                  Volver a Capturar
                 </button>
                 <button
                   type="button"
@@ -570,6 +663,7 @@ export const EmpleadosForm = ({ isOpen, onClose, onEmployeeAdded, employeeToEdit
     </div>
   );
 
+  // **Renderizar el formulario completo**
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">

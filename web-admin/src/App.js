@@ -11,7 +11,7 @@ const App = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Ruta por defecto - redirige a la página de autenticación */}
+        {/* Ruta por defecto redirige a la página de autenticación */}
         <Route path="/" element={<Navigate to="/auth" replace />} />
         
         {/* Ruta de autenticación */}

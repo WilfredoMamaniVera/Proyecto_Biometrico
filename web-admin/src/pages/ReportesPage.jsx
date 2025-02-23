@@ -8,12 +8,10 @@ import { Plus } from 'lucide-react';
 const ReportesPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
-  // Estado para el mes y año seleccionados
   const currentDate = new Date();
   const [selectedMonth, setSelectedMonth] = useState(currentDate.getMonth());
   const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
   
-  // Todos los reportes disponibles - definidos en un estado para mantener la consistencia
   const [allReports] = useState([
     { title: 'Reporte Mensual de Asistencia', date: 'Febrero 2024', type: 'PDF' },
     { title: 'Resumen de Tardanzas', date: 'Febrero 2024', type: 'Excel' },
@@ -23,10 +21,8 @@ const ReportesPage = () => {
     { title: 'Registro de Vacaciones', date: 'Marzo 2024', type: 'PDF' },
   ]);
   
-  // Estado para los reportes filtrados
   const [filteredReports, setFilteredReports] = useState([]);
   
-  // Filtrar reportes según el mes y año seleccionados
   useEffect(() => {
     const months = [
       'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -41,18 +37,16 @@ const ReportesPage = () => {
     });
     
     setFilteredReports(filtered);
-  }, [selectedMonth, selectedYear, allReports]); // Añadí allReports como dependencia
+  }, [selectedMonth, selectedYear, allReports]); 
   
   const handleMonthChange = (newMonth, newYear) => {
     setSelectedMonth(newMonth);
     setSelectedYear(newYear);
   };
 
-  // Función para generar un nuevo reporte
   const handleGenerateReport = () => {
     console.log('Generando nuevo reporte');
-    // Aquí manejarías la lógica para crear un nuevo reporte
-    // Por ejemplo, abrir un modal o navegar a una nueva página
+   
   };
 
   return (

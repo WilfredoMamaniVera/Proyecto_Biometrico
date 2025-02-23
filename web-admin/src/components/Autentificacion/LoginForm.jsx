@@ -15,7 +15,7 @@ export const LoginForm = ({ onRegisterClick }) => {
     setSuccess('');
     
     try {
-      const response = await fetch('/api/empleados/autenticar', {
+      const response = await fetch('http://localhost:5000/api/empleados/autenticar', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -24,7 +24,8 @@ export const LoginForm = ({ onRegisterClick }) => {
           email,
           password
         }),
-      });
+    });
+    
       
       const data = await response.json();
       
@@ -35,12 +36,10 @@ export const LoginForm = ({ onRegisterClick }) => {
       setSuccess(`Bienvenido, ${data.empleado.nombre}`);
       console.log('Usuario autenticado:', data.empleado);
       
-      // Aquí podrías almacenar el usuario en el estado global o localStorage
       localStorage.setItem('empleadoInfo', JSON.stringify(data.empleado));
       
-      // Redirección después de login exitoso (puedes ajustar según tu flujo)
       setTimeout(() => {
-        window.location.href = '/dashboard';
+        window.location.href = '/inicio';
       }, 1500);
       
     } catch (error) {
@@ -58,10 +57,9 @@ export const LoginForm = ({ onRegisterClick }) => {
     
     try {
       // En un caso real, aquí obtendrías los datos biométricos del escáner
-      // Para este ejemplo, simulamos datos de huella
       const mockDatosHuella = 'fingerprint-data-12345';
       
-      const response = await fetch('/api/empleados/autenticar', {
+      const response = await fetch('http://localhost:5000/api/empleados/autenticar', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,7 +67,8 @@ export const LoginForm = ({ onRegisterClick }) => {
         body: JSON.stringify({
           datosHuella: mockDatosHuella
         }),
-      });
+     });
+    
       
       const data = await response.json();
       
@@ -99,7 +98,6 @@ export const LoginForm = ({ onRegisterClick }) => {
     
     try {
       // En un caso real, aquí obtendrías los datos de reconocimiento facial
-      // Para este ejemplo, simulamos datos de Face ID
       const mockDatosFaceId = 'faceid-data-98765';
       
       const response = await fetch('/api/empleados/autenticar', {
